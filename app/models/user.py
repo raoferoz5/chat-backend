@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String,Boolean , DateTime
 from sqlalchemy.sql import func
-
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 
@@ -18,3 +18,9 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    messages = relationship(
+    "Message",
+    back_populates="sender"
+)
+    

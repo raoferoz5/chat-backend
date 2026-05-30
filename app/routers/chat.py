@@ -1,12 +1,15 @@
+import json
+
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
     status
 )
-from sqlalchemy import select, desc 
+from sqlalchemy import select, desc, delete, update 
 from sqlalchemy.orm import Session
 from app.database import get_db
+from app.database_async import async_session_local  # Imported for async websocket transactions
 from app.models.chat_room import ChatRoom
 from app.models.user import User      
 from app.models.message import Message
@@ -19,7 +22,7 @@ from app.services.connection_manager import manager
 
 router = APIRouter(
     prefix="/chat",
-    tags=["Chat"], # FIXED: Added the missing comma here to resolve SyntaxError
+    tags=["Chat"], 
     responses={404: {"description": "Not found"}}
 )
 
@@ -96,6 +99,7 @@ async def send_message(
     }
 
 
+# STEP 6 UPGRADE: Returning clean sender usernames using relationships
 @router.get("/messages/{room_id}")
 async def get_messages(
     room_id: int,
@@ -109,65 +113,124 @@ async def get_messages(
 
     skip = (page - 1) * limit
     
-    statement = (
-        select(
-            Message.id,
-            Message.content,
-            Message.room_id,
-            Message.sender_id,
-            User.username.label("sender_username"),   
-            ChatRoom.room_name.label("room_name")
-        )
-        .join(User, Message.sender_id == User.id)
-        .join(ChatRoom, Message.room_id == ChatRoom.id)
+    messages = (
+        db.query(Message)
         .filter(Message.room_id == room_id)
         .order_by(desc(Message.id))
         .offset(skip)
         .limit(limit)
+        .all()
     )
 
-    result = db.execute(statement)
-    messages = result.mappings().all()
+    response = []
+    for message in messages:
+        response.append(
+            {
+                "id": message.id,
+                "content": message.content,
+                "sender_username": message.sender.username,  # Implicit ORM join
+                "room_name": message.room.room_name,          # Implicit ORM join
+                "is_read": message.is_read,
+                "created_at": message.created_at.isoformat() if message.created_at else None
+            }
+        )
 
-    return messages
+    return response
 
 
+# ADVANCED UPGRADE: Async JSON Event Dispatcher Loop
 @router.websocket("/ws/{room_id}")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    room_id: int
-):
+async def websocket_endpoint(websocket: WebSocket, room_id: int):
+    await manager.connect(room_id, websocket)
+    
+    # Open an async context manager session to interact with Postgres without blocking
+    async with async_session_local() as db:
+        try:
+            while True:
+                raw_data = await websocket.receive_text()
+                
+                # FIXED: Wrapped all JSON parsing inside a single try/except block to protect against loop crashes
+                try:
+                    event = json.loads(raw_data)
+                    event_type = event.get("type")
+                    sender_id = event.get("sender_id")
+                except json.JSONDecodeError:
+                    continue  # Drop malformed string input safely
 
-    await manager.connect(
-        room_id,
-        websocket
-    )
+                # --- 1. NEW CHAT MESSAGE (Automated Storage) ---
+                if event_type == "new_message":
+                    content = event.get("content")
+                    
+                    # Store to Postgres automatically
+                    new_msg = Message(content=content, sender_id=sender_id, room_id=room_id)
+                    db.add(new_msg)
+                    await db.commit()
+                    await db.refresh(new_msg)
 
-    try:
+                    # Fetch sender username instantly using modern async statement execution
+                    user_stmt = select(User.username).where(User.id == sender_id)
+                    user_result = await db.execute(user_stmt)
+                    username = user_result.scalar()
 
-        while True:
+                    # Unified dictionary broadcast style across your connections manager
+                    await manager.broadcast(room_id, {
+                        "type": "new_message",
+                        "message_id": new_msg.id,
+                        "content": content,
+                        "sender_id": sender_id,
+                        "sender_username": username,
+                        "created_at": str(new_msg.created_at)
+                    })
 
-            data = await websocket.receive_text()
+                # --- 2. TYPING INDICATORS ---
+                elif event_type == "typing":
+                    is_typing = event.get("is_typing", False)
+                    await manager.broadcast(room_id, {
+                        "type": "typing",
+                        "sender_id": sender_id,
+                        "username": event.get("username", "Someone"),
+                        "is_typing": is_typing
+                    })
 
-            await manager.broadcast(
-                room_id,
-                data
-            )
+                # --- 3. READ RECEIPTS ---
+                elif event_type == "read_receipt":
+                    message_id = event.get("message_id")
+                    
+                    # Async update message record status
+                    stmt = update(Message).where(Message.id == message_id).values(is_read=True)
+                    await db.execute(stmt)
+                    await db.commit()
+                    
+                    await manager.broadcast(room_id, {
+                        "type": "read_receipt",
+                        "message_id": message_id,
+                        "is_read": True
+                    })
 
-    except WebSocketDisconnect:
+                # --- 4. LIVE MESSAGE DELETION ---
+                elif event_type == "delete_message":
+                    message_id = event.get("message_id")
+                    
+                    # Delete statement with a safety constraint ensuring only the author can wipe it
+                    del_stmt = delete(Message).where(Message.id == message_id, Message.sender_id == sender_id)
+                    await db.execute(del_stmt)
+                    await db.commit()
 
-        manager.disconnect(
-            room_id,
-            websocket
-        )
+                    await manager.broadcast(room_id, {
+                        "type": "delete_message",
+                        "message_id": message_id
+                    })
+
+        except WebSocketDisconnect:
+            manager.disconnect(room_id, websocket)
+
+
+# STEP 10: Online User Counter Endpoint
 @router.get("/rooms/{room_id}/online")
-async def online_users(
-    room_id: int
-):
-
+async def online_users(room_id: int):
+    """
+    Fetch the live count of currently connected users in a specific chat room.
+    """
     return {
-        "online_users":
-        manager.room_users_count(
-            room_id
-        )
+        "online_users": manager.room_users_count(room_id)
     }

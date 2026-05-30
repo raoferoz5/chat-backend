@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String
-
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 
@@ -18,3 +18,7 @@ class ChatRoom(Base):
         unique=True,
         nullable=False
     )
+    messages = relationship(
+    "Message",
+    back_populates="room"
+)

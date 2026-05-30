@@ -9,7 +9,7 @@ from sqlalchemy import (
 from sqlalchemy.sql import func
 
 from app.database import Base
-
+from sqlalchemy.orm import relationship
 
 class Message(Base):
 
@@ -39,4 +39,13 @@ class Message(Base):
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now()
+    )
+    sender = relationship(
+    "User",
+    back_populates="messages"
+    )
+
+    room = relationship(
+        "ChatRoom",
+        back_populates="messages"
     )

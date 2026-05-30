@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.services.dependencies import get_current_user
 from app.database import get_db
@@ -18,6 +18,54 @@ router = APIRouter(
     prefix="/users",
     tags=["Users"]
 )
+
+
+# === NEW REGISTRATION ENDPOINT ===
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register_user(
+    user_data: UserCreate, 
+    db: Session = Depends(get_db)
+):
+    """
+    Register a brand new user profile into the database.
+    """
+    # 1. Check if a user with this email already exists
+    existing_by_email = db.query(User).filter(User.email == user_data.email).first()
+    if existing_by_email:
+        raise HTTPException(
+            status_code=400,
+            detail="A user with this email is already registered."
+        )
+
+    # 2. Check if a user with this username already exists (optional but recommended)
+    existing_by_username = db.query(User).filter(User.username == user_data.username).first()
+    if existing_by_username:
+        raise HTTPException(
+            status_code=400,
+            detail="This username is already taken."
+        )
+
+    # 3. Hash the plain password safely before saving
+    secure_password = hash_password(user_data.password)
+
+    # 4. Save the fresh account into your PostgreSQL table
+    new_user = User(
+        email=user_data.email,
+        username=user_data.username,
+        password=secure_password  # Storing the securely encrypted hash string
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return {
+        "message": "User registered successfully!",
+        "user_id": new_user.id,
+        "email": new_user.email,
+        "username": new_user.username
+    }
+
 
 @router.post("/login")
 async def login_user(
@@ -61,6 +109,7 @@ async def login_user(
         "access_token": access_token,
         "token_type": "bearer"
     }
+
 
 @router.get("/me")
 async def get_me(
