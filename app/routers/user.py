@@ -52,7 +52,8 @@ async def login_user(
     access_token = create_access_token(
         data={
             "user_id": existing_user.id,
-            "email": existing_user.email
+            "email": existing_user.email,
+            "username": existing_user.username
         }
     )
 
@@ -66,5 +67,7 @@ async def get_me(
     current_user = Depends(get_current_user)
 ):
     return {
-        "user": current_user
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username
     }
