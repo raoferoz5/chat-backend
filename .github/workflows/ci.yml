@@ -1,0 +1,63 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # 1. Spin up a temporary PostgreSQL container inside GitHub for your tests
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: eagl3786
+          POSTGRES_DB: chatapp
+        ports:
+          - 5432:5432
+        # Wait until PostgreSQL is completely healthy before launching the tests
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # 2. Pull down your source code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 3. Set up Python 3.12
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip' # Speeds up future workflow runs by caching dependencies
+
+      # 4. Install all dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Force install test packages just in case they aren't in requirements.txt yet
+          pip install pytest pytest-asyncio httpx asyncpg
+
+      # 5. Run Alembic migrations to build the tables in the GitHub database instance
+      - name: Run Database Migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:eagl3786@localhost:5432/chatapp
+        run: |
+          alembic upgrade head
+
+      # 6. Execute your async test suite!
+      - name: Run Tests with Pytest
+        env:
+          # Injects the environment variable directly into the test container environment
+          DATABASE_URL: postgresql+asyncpg://postgres:eagl3786@localhost:5432/chatapp
+        run: |
+          python -m pytest
