@@ -1,5 +1,4 @@
 import json
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -137,7 +136,6 @@ async def get_messages(
 
     return response
 
-
 # ADVANCED UPGRADE: Async JSON Event Dispatcher Loop
 @router.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: int):
@@ -223,7 +221,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int):
 
         except WebSocketDisconnect:
             manager.disconnect(room_id, websocket)
-
 
 # STEP 10: Online User Counter Endpoint
 @router.get("/rooms/{room_id}/online")

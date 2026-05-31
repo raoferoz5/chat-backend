@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.services.dependencies import get_current_user
-from app.database import get_db
-from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, UserLogin
-
-# 1. IMPORT OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
+from app.database_async import get_async_db  # Using your async database file
+from app.models.user import User
+from app.schemas.user import UserCreate
+from app.limiter import limiter  # Importing our rate limiter instance
+from app.services.dependencies import get_current_user
 from app.services.auth import (
     hash_password,
     verify_password,
@@ -20,28 +20,32 @@ router = APIRouter(
 )
 
 
-# === NEW REGISTRATION ENDPOINT ===
+# === REGISTRATION ENDPOINT ===
 @router.post("/register", status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")  # Protects against registration bot spam
 async def register_user(
+    request: Request,  # Required by SlowAPI to track requester IP
     user_data: UserCreate, 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Register a brand new user profile into the database.
+    Register a brand new user profile into the database asynchronously.
     """
     # 1. Check if a user with this email already exists
-    existing_by_email = db.query(User).filter(User.email == user_data.email).first()
+    result = await db.execute(select(User).filter(User.email == user_data.email))
+    existing_by_email = result.scalars().first()
     if existing_by_email:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="A user with this email is already registered."
         )
 
-    # 2. Check if a user with this username already exists (optional but recommended)
-    existing_by_username = db.query(User).filter(User.username == user_data.username).first()
+    # 2. Check if a user with this username already exists
+    result = await db.execute(select(User).filter(User.username == user_data.username))
+    existing_by_username = result.scalars().first()
     if existing_by_username:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="This username is already taken."
         )
 
@@ -52,40 +56,42 @@ async def register_user(
     new_user = User(
         email=user_data.email,
         username=user_data.username,
-        password=secure_password  # Storing the securely encrypted hash string
+        password=secure_password
     )
 
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    await db.commit()
+    await db.refresh(new_user)
 
     return {
-        "message": "User registered successfully!",
-        "user_id": new_user.id,
+        "id": new_user.id,
         "email": new_user.email,
         "username": new_user.username
     }
 
 
+# === LOGIN ENDPOINT ===
 @router.post("/login")
+@limiter.limit("10/minute")  # Protects against brute-force password cracking
 async def login_user(
-    # 2. SWAP UserLogin FOR THE FORM DEPENDENCY
+    request: Request,  # Required by SlowAPI to track requester IP
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)  # Updated to AsyncSession!
 ):
-    # 3. USE form_data.username INSTEAD OF user.email
-    # (Swagger sends the email into the 'username' field of the form)
-    existing_user = db.query(User).filter(
-        User.email == form_data.username
-    ).first()
+    """
+    Authenticate user via OAuth2 Form data and provide a JWT Access Token.
+    """
+    # 1. Asynchronously fetch user by email (passed to form_data.username by Swagger)
+    result = await db.execute(select(User).filter(User.email == form_data.username))
+    existing_user = result.scalars().first()
 
     if not existing_user:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 
-    # 4. USE form_data.password INSTEAD OF user.password
+    # 2. Verify password hash matches
     valid_password = verify_password(
         form_data.password,
         existing_user.password
@@ -93,10 +99,11 @@ async def login_user(
 
     if not valid_password:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 
+    # 3. Generate token containing key details
     access_token = create_access_token(
         data={
             "user_id": existing_user.id,
@@ -111,10 +118,14 @@ async def login_user(
     }
 
 
+# === PROFILE ENDPOINT ===
 @router.get("/me")
 async def get_me(
     current_user = Depends(get_current_user)
 ):
+    """
+    Retrieve authenticated user details based on incoming JWT bearer token.
+    """
     return {
         "id": current_user.id,
         "email": current_user.email,

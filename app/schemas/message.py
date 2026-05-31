@@ -1,5 +1,5 @@
 # File path: app/schemas/message.py
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
 from typing import Optional
 
@@ -16,11 +16,9 @@ class MessageCreate(BaseModel):
         return value
 
 class MessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True) # <--- New Style
     id: int
     content: str = Field(min_length=1, max_length=1000)
-    sender_username: str  # FIXED: Changed from StopIteration to str, and matched Step 6's name
+    sender_username: str  
     room_name: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True  # Allows Pydantic to read from SQLAlchemy ORM models smoothly
