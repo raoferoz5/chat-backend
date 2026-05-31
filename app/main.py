@@ -14,6 +14,3 @@ app.include_router(chat_router)
 @app.get("/")
 async def home():
     return {"message": "Chat Backend Running"}
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
