@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.database_async import get_async_db  # Using your async database file
+from app.database import get_db as get_async_db  #  Points cleanly to your updated file
 from app.models.user import User
 from app.schemas.user import UserCreate
 from app.limiter import limiter  # Importing our rate limiter instance
