@@ -21,5 +21,5 @@ COPY . .
 # Expose the port FastAPI runs on
 EXPOSE 8000
 
-# 🚀 THE CRITICAL FIX: Run migrations first, then explicitly run Uvicorn on Port 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# 🚀 RUN MIGRATIONS; THEN FORCE UVICORN TO RUN ON PORT 8000 NO MATTER WHAT
+CMD ["sh", "-c", "alembic upgrade head; uvicorn app.main:app --host 0.0.0.0 --port 8000"]
