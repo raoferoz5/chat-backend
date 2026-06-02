@@ -1,12 +1,23 @@
+import os  # Ensure os is imported
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import DATABASE_URL
 
-# 1. Use create_async_engine for non-blocking database queries
+# 🚀 FIX: Force Railway's raw postgres URL to use the asyncpg driver prefix
+if DATABASE_URL:
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+asyncpg://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    # Local development fallback
+    DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/chatapp"
+
+# 1. Use create_async_engine with the sanitized async string
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,  # Set to True if you want to see raw SQL logs in Railway
-    pool_pre_ping=True  # Automatically checks and revives dead connections
+    echo=False,  
+    pool_pre_ping=True  
 )
 
 # 2. Configure the factory to build AsyncSessions instead of standard sessions
