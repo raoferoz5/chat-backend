@@ -22,4 +22,5 @@ COPY . .
 EXPOSE 8000
 
 # 🚀 RUN MIGRATIONS; THEN FORCE UVICORN TO RUN ON PORT 8000 NO MATTER WHAT
-CMD ["sh", "-c", "alembic upgrade head; uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Run the app directly using Uvicorn on port 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
