@@ -21,18 +21,8 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # --- DYNAMIC DATABASE URL RESOLUTION ---
-# 1. Look for Railway's injected environment variable first
-db_url = os.getenv("DATABASE_URL")
-
-if db_url:
-    # Convert standard postgres handles to asyncpg-compatible drivers
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
-        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-else:
-    # 2. Local fallback if no environment variable is present
-    db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/chatapp"
+# 🚀 TEMPORARY OVERRIDE: Pointing directly to live Railway via Public Proxy
+db_url = "postgresql+asyncpg://postgres:iwAnukgdjbabPZZDVaCJevUaFdsfOcNd@zephyr.proxy.rlwy.net:41642/railway"
 
 # Inject the resolved clean URL back into the Alembic config state
 config.set_main_option("sqlalchemy.url", db_url)
@@ -65,7 +55,7 @@ async def run_migrations_online() -> None:
     """Run migrations in 'online' mode using an AsyncEngine."""
     url = config.get_main_option("sqlalchemy.url")
         
-    print("Connecting to target database service engine context...")
+    print(f"Connecting directly to live database via public proxy URL: {url}")
 
     connectable = create_async_engine(
         url,
