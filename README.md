@@ -2,9 +2,14 @@
 
 A scalable, containerized asynchronous chat application backend built using modern cloud-native standards. This repository contains the complete RESTful API and WebSocket engine driving real-time multi-room messaging.
 
+## 🚀 Live Deployment
+
+The API is actively deployed and running on Railway:
+👉 **[Live API Endpoint](https://chat-backend-production-d04b.up.railway.app)**
+
 ---
 
-## 🚀 Tech Stack
+## 🛠️ Tech Stack
 
 - **Framework:** FastAPI (Python 3.12)
 - **Database:** PostgreSQL 16
@@ -33,11 +38,11 @@ The application isolates computational logic from data layers through a modular 
 ```text
 chat-backend/
 ├── app/
-│   ├── models/          # SQLAlchemy Database Schemas
-│   ├── routers/         # HTTP Endpoints & WebSocket Handlers
-│   ├── database.py      # Synchronous Engine Context
-│   ├── database_async.py# Asynchronous Engine for WebSockets
-│   └── main.py          # Application Core Entrypoint
-├── Dockerfile           # Multi-stage optimized application build
-├── docker-compose.yml   # Multi-service network orchestrator
-└── requirements.txt     # Locked production dependencies
+│   ├── models/           # SQLAlchemy Database Schemas
+│   ├── routers/          # HTTP Endpoints & WebSocket Handlers
+│   ├── database.py       # Synchronous Engine Context
+│   ├── database_async.py # Asynchronous Engine for WebSockets
+│   └── main.py           # Application Core Entrypoint
+├── Dockerfile            # Multi-stage optimized application build
+├── docker-compose.yml    # Multi-service network orchestrator
+└── requirements.txt      # Locked production dependencies
